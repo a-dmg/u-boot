@@ -96,24 +96,28 @@ int tcg2_create_digest(struct udevice *dev, const u8 *input, u32 length,
 			sha1_update(&ctx, input, length);
 			sha1_finish(&ctx, final);
 			len = TPM2_SHA1_DIGEST_SIZE;
+			printf(" --- TPM2_ALG_SHA1\n");
 			break;
 		case TPM2_ALG_SHA256:
 			sha256_starts(&ctx_256);
 			sha256_update(&ctx_256, input, length);
 			sha256_finish(&ctx_256, final);
 			len = TPM2_SHA256_DIGEST_SIZE;
+			printf(" --- TPM2_ALG_SHA256\n");
 			break;
 		case TPM2_ALG_SHA384:
 			sha384_starts(&ctx_512);
 			sha384_update(&ctx_512, input, length);
 			sha384_finish(&ctx_512, final);
 			len = TPM2_SHA384_DIGEST_SIZE;
+			printf(" --- TPM2_ALG_SHA384\n");
 			break;
 		case TPM2_ALG_SHA512:
 			sha512_starts(&ctx_512);
 			sha512_update(&ctx_512, input, length);
 			sha512_finish(&ctx_512, final);
 			len = TPM2_SHA512_DIGEST_SIZE;
+			printf(" --- TPM2_ALG_SHA512\n");
 			break;
 		default:
 			printf("%s: unsupported algorithm %x\n", __func__,
@@ -485,6 +489,17 @@ int tcg2_pcr_extend(struct udevice *dev, u32 pcr_index,
 	for (i = 0; i < digest_list->count; i++) {
 		u32 alg = digest_list->digests[i].hash_alg;
 
+		if (pcr_index == 8) {
+			for (unsigned j = 0; j < 32; ++j)
+			{
+				if (digest_list->digests[i].hash_alg == TPM2_ALG_SHA256)
+					printf("%00x", digest_list->digests[i].digest.sha256[j]);
+	//			if (digest_list->digests[i].hash_alg == TPM2_ALG_SHA1)
+	//				printf("%00x", digest_list->digests[i].digest.sha1[j]);
+			}
+			printf("\n");
+		}
+
 		rc = tpm2_pcr_extend(dev, pcr_index, alg,
 				     (u8 *)&digest_list->digests[i].digest,
 				     tpm2_algorithm_to_len(alg));
@@ -600,6 +615,8 @@ int tcg2_log_prepare_buffer(struct udevice *dev, struct tcg2_event_log *elog,
 	return rc;
 }
 
+extern void print_pcr(struct udevice *dev, u32 idx);
+
 int tcg2_measurement_init(struct udevice **dev, struct tcg2_event_log *elog,
 			  bool ignore_existing_log)
 {
@@ -619,6 +636,16 @@ int tcg2_measurement_init(struct udevice **dev, struct tcg2_event_log *elog,
 		return rc;
 	}
 
+	printf(" ----- PCRS --------\n");
+	print_pcr(*dev, 0);print_pcr(*dev, 1);print_pcr(*dev, 2);print_pcr(*dev, 3);
+	print_pcr(*dev, 4);print_pcr(*dev, 5);print_pcr(*dev, 6);print_pcr(*dev, 7);
+	print_pcr(*dev, 8);print_pcr(*dev, 9);print_pcr(*dev, 10);print_pcr(*dev, 11);
+	print_pcr(*dev, 12);print_pcr(*dev, 13);print_pcr(*dev, 14);print_pcr(*dev, 15);
+	print_pcr(*dev, 16);print_pcr(*dev, 17);print_pcr(*dev, 18);print_pcr(*dev, 19);
+	print_pcr(*dev, 20);print_pcr(*dev, 21);print_pcr(*dev, 22);print_pcr(*dev, 23);
+	printf("-------------\n");
+	print_pcr(*dev, 0);
+	printf("verions_str=%s\n", version_string);
 	rc = tcg2_measure_event(*dev, elog, 0, EV_S_CRTM_VERSION,
 				strlen(version_string) + 1,
 				(u8 *)version_string);
@@ -626,6 +653,7 @@ int tcg2_measurement_init(struct udevice **dev, struct tcg2_event_log *elog,
 		tcg2_measurement_term(*dev, elog, true);
 		return rc;
 	}
+	print_pcr(*dev, 0);
 
 	return 0;
 }
@@ -633,12 +661,14 @@ int tcg2_measurement_init(struct udevice **dev, struct tcg2_event_log *elog,
 void tcg2_measurement_term(struct udevice *dev, struct tcg2_event_log *elog,
 			   bool error)
 {
+	/** Do not extends PCR with fixed values in case of errors 
 	u32 event = error ? 0x1 : 0xffffffff;
 	int i;
 
 	for (i = 0; i < 8; ++i)
 		tcg2_measure_event(dev, elog, i, EV_SEPARATOR, sizeof(event),
 				   (const u8 *)&event);
+	*/
 
 	if (elog->log)
 		unmap_physmem(elog->log, MAP_NOCACHE);
@@ -845,6 +875,7 @@ u32 tpm2_nv_define_space(struct udevice *dev, u32 space_index,
 u32 tpm2_pcr_extend(struct udevice *dev, u32 index, u32 algorithm,
 		    const u8 *digest, u32 digest_len)
 {
+	printf("%s:%d index=%d\n", __FUNCTION__, __LINE__, index);
 	/* Length of the message header, up to start of digest */
 	uint offset = 33;
 	u8 command_v2[COMMAND_BUFFER_SIZE] = {

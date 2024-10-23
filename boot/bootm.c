@@ -5,23 +5,25 @@
  */
 
 #ifndef USE_HOSTCC
-#include <common.h>
+#include <asm/cache.h>
+#include <asm/global_data.h>
+#include <asm/io.h>
 #include <bootstage.h>
 #include <cli.h>
+#include <common.h>
 #include <cpu_func.h>
+#include <dm.h>
+#include <dm/of_access.h>
 #include <env.h>
 #include <errno.h>
 #include <fdt_support.h>
 #include <irq_func.h>
+#include <linux/sizes.h>
 #include <lmb.h>
 #include <log.h>
 #include <malloc.h>
 #include <mapmem.h>
 #include <net.h>
-#include <asm/cache.h>
-#include <asm/global_data.h>
-#include <asm/io.h>
-#include <linux/sizes.h>
 #include <tpm-v2.h>
 #if defined(CONFIG_CMD_USB)
 #include <usb.h>
@@ -660,6 +662,36 @@ int bootm_process_cmdline_env(int flags)
 	return 0;
 }
 
+void print_pcr(struct udevice *dev, u32 idx) {
+	int ret = 0;
+	char data[tpm2_algorithm_to_len(TPM2_ALG_SHA256)];
+	unsigned updates;
+
+	struct tpm_chip_priv *priv;
+	priv = dev_get_uclass_priv(dev);
+	if (!priv) {
+		printf("Error fetching priv from uclass\n");
+		return;
+	}
+
+	ret = tpm2_pcr_read(dev,
+			idx,
+			priv->pcr_select_min,
+			TPM2_ALG_SHA256,
+			&data,
+			tpm2_algorithm_to_len(TPM2_ALG_SHA256),
+			&updates);
+	if (ret) {
+		printf("tpm2_pcr_read error\n");
+	} else {
+		printf("idx==%d value=", idx);
+		for (unsigned i = 0; i < tpm2_algorithm_to_len(TPM2_ALG_SHA256); ++i) {
+			printf("%00x", data[i]);
+		}
+		printf(" updates=%d\n", updates);
+	}
+}
+
 int bootm_measure(struct bootm_headers *images)
 {
 	int ret = 0;
@@ -680,11 +712,14 @@ int bootm_measure(struct bootm_headers *images)
 		bool ign;
 
 		elog.log_size = 0;
+
 		ign = IS_ENABLED(CONFIG_MEASURE_IGNORE_LOG);
 		ret = tcg2_measurement_init(&dev, &elog, ign);
 		if (ret)
 			return ret;
 
+
+		print_pcr(dev, 8);
 		image_buf = map_sysmem(images->os.image_start,
 				       images->os.image_len);
 		ret = tcg2_measure_data(dev, &elog, 8, images->os.image_len,
@@ -692,7 +727,10 @@ int bootm_measure(struct bootm_headers *images)
 					strlen("linux") + 1, (u8 *)"linux");
 		if (ret)
 			goto unmap_image;
+		print_pcr(dev, 8);
 
+
+		print_pcr(dev, 9);
 		rd_len = images->rd_end - images->rd_start;
 		initrd_buf = map_sysmem(images->rd_start, rd_len);
 		ret = tcg2_measure_data(dev, &elog, 9, rd_len, initrd_buf,
@@ -700,23 +738,35 @@ int bootm_measure(struct bootm_headers *images)
 					(u8 *)"initrd");
 		if (ret)
 			goto unmap_initrd;
+		print_pcr(dev, 9);
 
 		if (IS_ENABLED(CONFIG_MEASURE_DEVICETREE)) {
+			print_pcr(dev, 0);
 			ret = tcg2_measure_data(dev, &elog, 0, images->ft_len,
 						(u8 *)images->ft_addr,
 						EV_TABLE_OF_DEVICES,
 						strlen("dts") + 1,
 						(u8 *)"dts");
-			if (ret)
+			if (ret) {
+				printf("Error recording device tree\n");
 				goto unmap_initrd;
+			}
+			print_pcr(dev, 0);
 		}
 
+		/** Do not extend PCR 1 with bootargs value, use bootcmd instead
 		s = env_get("bootargs");
+		*/
+		s = env_get("bootcmd");
 		if (!s)
 			s = "";
+		print_pcr(dev, 1);
 		ret = tcg2_measure_data(dev, &elog, 1, strlen(s) + 1, (u8 *)s,
 					EV_PLATFORM_CONFIG_FLAGS,
 					strlen(s) + 1, (u8 *)s);
+		if (ret)
+			printf("Error recording bootargs\n");
+		print_pcr(dev, 1);
 
 unmap_initrd:
 		unmap_sysmem(initrd_buf);
@@ -724,6 +774,15 @@ unmap_initrd:
 unmap_image:
 		unmap_sysmem(image_buf);
 		tcg2_measurement_term(dev, &elog, ret != 0);
+
+		printf(" ----- PCRS --------\n");
+		print_pcr(dev, 0);print_pcr(dev, 1);print_pcr(dev, 2);print_pcr(dev, 3);
+		print_pcr(dev, 4);print_pcr(dev, 5);print_pcr(dev, 6);print_pcr(dev, 7);
+		print_pcr(dev, 8);print_pcr(dev, 9);print_pcr(dev, 10);print_pcr(dev, 11);
+		print_pcr(dev, 12);print_pcr(dev, 13);print_pcr(dev, 14);print_pcr(dev, 15);
+		print_pcr(dev, 16);print_pcr(dev, 17);print_pcr(dev, 18);print_pcr(dev, 19);
+		print_pcr(dev, 20);print_pcr(dev, 21);print_pcr(dev, 22);print_pcr(dev, 23);
+		printf("-------------\n");
 	}
 
 	return ret;
