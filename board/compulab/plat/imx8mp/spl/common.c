@@ -5,6 +5,11 @@
 #include <asm/arch/clock.h>
 #include <asm/arch/sys_proto.h>
 
+#include <asm/u-boot.h>
+#include <asm/global_data.h>
+
+DECLARE_GLOBAL_DATA_PTR;
+
 #define UART_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_FSEL1)
 #define WDOG_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_ODE | PAD_CTL_PUE | PAD_CTL_PE)
 
@@ -28,6 +33,7 @@ static iomux_v3_cfg_t const wdog_pads[] = {
 
 int board_early_init_f(void)
 {
+	gd->flags |= (GD_FLG_DISABLE_CONSOLE);
 	struct wdog_regs *wdog = (struct wdog_regs *)WDOG1_BASE_ADDR;
 
 	imx_iomux_v3_setup_multiple_pads(wdog_pads, ARRAY_SIZE(wdog_pads));

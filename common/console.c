@@ -710,9 +710,6 @@ void putc(const char c)
 		return;
 	}
 
-	if (IS_ENABLED(CONFIG_DISABLE_CONSOLE) && (gd->flags & GD_FLG_DISABLE_CONSOLE))
-		return;
-
 	if (!gd->have_console)
 		return pre_console_putc(c);
 
@@ -754,9 +751,6 @@ void puts(const char *s)
 		return;
 	}
 
-	if (IS_ENABLED(CONFIG_DISABLE_CONSOLE) && (gd->flags & GD_FLG_DISABLE_CONSOLE))
-		return;
-
 	if (!gd->have_console)
 		return pre_console_puts(s);
 
@@ -786,9 +780,6 @@ void flush(void)
 		return;
 
 	if (IS_ENABLED(CONFIG_SILENT_CONSOLE) && (gd->flags & GD_FLG_SILENT))
-		return;
-
-	if (IS_ENABLED(CONFIG_DISABLE_CONSOLE) && (gd->flags & GD_FLG_DISABLE_CONSOLE))
 		return;
 
 	if (!gd->have_console)
